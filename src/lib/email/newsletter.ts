@@ -37,15 +37,7 @@ export async function createCampaign(input: { subject: string; preheader?: strin
   if (!subject || subject.length > 240 || !body || body.length > 50_000) throw new NewsletterError("INVALID_CAMPAIGN_INPUT");
   const supabase = createAdminClient();
   const status = input.scheduledAt ? "scheduled" : "draft";
-  const { data, error } = await supabase.from("newsletter_campaigns").insert({
-    subject,
-    preheader: input.preheader?.trim().slice(0, 500) ?? "",
-    content_text: body,
-    content_html: "",
-    status,
-    scheduled_at: input.scheduledAt ?? null,
-    created_by: input.createdBy,
-  }).select("id").single();
+  const { data, error } = await supabase.from("newsletter_campaigns").insert({ subject, preheader: input.preheader?.trim().slice(0, 500) ?? "", content_text: body, content_html: "", status, scheduled_at: input.scheduledAt ?? null, created_by: input.createdBy }).select("id").single();
   if (error) throw new NewsletterError(`CAMPAIGN_CREATE_FAILED: ${error.message}`);
   return data.id as string;
 }
@@ -57,13 +49,10 @@ export async function sendCampaignBatch(campaignId: string, limit = 50) {
   const { data: campaign, error: campaignError } = await supabase.from("newsletter_campaigns").select("id,subject,preheader,content_text,status").eq("id", campaignId).single();
   if (campaignError || !campaign) throw new NewsletterError("CAMPAIGN_NOT_FOUND");
   if (["sent", "cancelled"].includes(campaign.status)) return { sent: 0, failed: 0, remaining: 0, complete: campaign.status === "sent" };
-
   await supabase.from("newsletter_campaigns").update({ status: "sending", last_error: null }).eq("id", campaignId);
   const { data: subscribers, error: subscriberError } = await supabase.from("subscribers").select("id,email").eq("status", "active").order("created_at", { ascending: true }).limit(Math.min(Math.max(limit, 1), 100));
   if (subscriberError) throw new NewsletterError(`SUBSCRIBERS_READ_FAILED: ${subscriberError.message}`);
-
-  let sent = 0;
-  let failed = 0;
+  let sent = 0; let failed = 0;
   for (const subscriber of subscribers ?? []) {
     const { data: existing } = await supabase.from("newsletter_deliveries").select("id,status,attempt_count").eq("campaign_id", campaignId).eq("subscriber_id", subscriber.id).maybeSingle();
     if (existing && ["sent", "delivered", "opened", "clicked"].includes(existing.status)) continue;
@@ -74,13 +63,7 @@ export async function sendCampaignBatch(campaignId: string, limit = 50) {
     const unsubscribeUrl = `${siteBaseUrl()}/newsletter/unsubscribe?token=${encodeURIComponent(rawUnsubscribe)}`;
     const template = campaignEmail({ subject: campaign.subject, preheader: campaign.preheader, body: campaign.content_text, unsubscribeUrl, footer: settings.newsletter_footer });
     try {
-      const response = await emailProvider.sendEmail({
-        to: subscriber.email,
-        from: `${settings.newsletter_sender_name} <${settings.newsletter_sender_email}>`,
-        replyTo: settings.newsletter_reply_to,
-        ...template,
-        idempotencyKey: `campaign:${campaignId}:${subscriber.id}`,
-      });
+      const response = await emailProvider.sendEmail({ to: subscriber.email, from: `${settings.newsletter_sender_name} <${settings.newsletter_sender_email}>`, replyTo: settings.newsletter_reply_to, subject: campaign.subject, ...template, idempotencyKey: `campaign:${campaignId}:${subscriber.id}` });
       await supabase.from("newsletter_deliveries").upsert({ campaign_id: campaignId, subscriber_id: subscriber.id, provider_message_id: response.id, status: "sent", sent_at: new Date().toISOString(), error_message: null, attempt_count: attempts + 1, next_retry_at: null }, { onConflict: "campaign_id,subscriber_id" });
       sent += 1;
     } catch (error) {
@@ -90,7 +73,6 @@ export async function sendCampaignBatch(campaignId: string, limit = 50) {
       failed += 1;
     }
   }
-
   const { count: activeCount } = await supabase.from("subscribers").select("id", { count: "exact", head: true }).eq("status", "active");
   const { count: successfulCount } = await supabase.from("newsletter_deliveries").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).in("status", ["sent", "delivered", "opened", "clicked"]);
   const remaining = Math.max(0, (activeCount ?? 0) - (successfulCount ?? 0));
