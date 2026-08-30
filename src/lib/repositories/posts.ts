@@ -77,7 +77,7 @@ async function categoryPostIds(categoryId?:string,categorySlug?:string,admin=fal
   if (!id&&categorySlug) { const {data,error}=await supabase.from("categories").select("id").eq("slug",categorySlug).maybeSingle(); if(error) throw new Error(`CATEGORY_LOOKUP_FAILED: ${error.message}`); id=typeof data?.id==="string"?data.id:undefined; }
   if (!id) return [] as string[];
   const {data,error}=await supabase.from("post_categories").select("post_id").eq("category_id",id); if(error) throw new Error(`CATEGORY_POSTS_FAILED: ${error.message}`);
-  return (data??[]).map((row)=>String(row.post_id));
+  return ((data??[]) as Row[]).map((row: Row)=>String(row.post_id));
 }
 
 export const postsRepository = {
@@ -103,7 +103,7 @@ export const postsRepository = {
   async getRelated(postId:string,limit=3) {
     if(!isSupabaseConfigured()) { const source=mockPosts.find((p)=>p.id===postId); return source?mockPosts.filter((p)=>p.id!==postId&&p.category===source.category).slice(0,limit):[]; }
     const supabase=createPublicClient(); const {data,error}=await supabase.rpc("related_public_posts",{p_post_id:postId,p_limit:limit}); if(error) throw new Error(`RELATED_POSTS_QUERY_FAILED: ${error.message}`);
-    const order=(data??[] as Row[]).map((row)=>String(row.id)); if(!order.length) return [];
+    const order=((data??[]) as Row[]).map((row: Row)=>String(row.id)); if(!order.length) return [];
     const {data:rows,error:rowsError}=await supabase.from("posts").select(POST_SELECT).in("id",order); if(rowsError) throw new Error(`RELATED_POST_ROWS_FAILED: ${rowsError.message}`);
     const mapped=await mapPublicRows((rows??[]) as Row[]); return mapped.sort((a,b)=>order.indexOf(a.id??"")-order.indexOf(b.id??""));
   },
@@ -111,21 +111,21 @@ export const postsRepository = {
     const {query="",type,categorySlug,dateFrom,dateTo,page=1,pageSize=12}=filters;
     if(!isSupabaseConfigured()) { const normalized=query.trim().toLocaleLowerCase("ar"); const matches=mockPosts.filter((p)=>(!normalized||`${p.title} ${p.excerpt}`.toLocaleLowerCase("ar").includes(normalized))&&(!type||p.contentType===type)&&(!categorySlug||p.category===categorySlug)); const start=Math.max(0,page-1)*pageSize; return {posts:matches.slice(start,start+pageSize),count:matches.length,page,pageSize}; }
     const supabase=createPublicClient(); const {data,error}=await supabase.rpc("search_public_posts",{p_query:query,p_type:type??null,p_category_slug:categorySlug??null,p_date_from:dateFrom??null,p_date_to:dateTo??null,p_limit:pageSize,p_offset:Math.max(0,page-1)*pageSize});
-    if(error) throw new Error(`PUBLIC_SEARCH_FAILED: ${error.message}`); const result=(data??[]) as Row[]; const ids=result.map((row)=>String(row.id)); const count=typeof result[0]?.total_count==="number"?result[0].total_count:Number(result[0]?.total_count??0);
+    if(error) throw new Error(`PUBLIC_SEARCH_FAILED: ${error.message}`); const result=(data??[]) as Row[]; const ids=result.map((row: Row)=>String(row.id)); const count=typeof result[0]?.total_count==="number"?result[0].total_count:Number(result[0]?.total_count??0);
     if(!ids.length) return {posts:[],count:0,page,pageSize}; const {data:rows,error:rowsError}=await supabase.from("posts").select(POST_SELECT).in("id",ids); if(rowsError) throw new Error(`PUBLIC_SEARCH_ROWS_FAILED: ${rowsError.message}`);
     const mapped=await mapPublicRows((rows??[]) as Row[]); return {posts:mapped.sort((a,b)=>ids.indexOf(a.id??"")-ids.indexOf(b.id??"")),count,page,pageSize};
   },
   async listSitemapEntries() {
     if(!isSupabaseConfigured()) return mockPosts.map((post)=>({slug:post.slug,type:post.contentType,updatedAt:post.updatedAt||post.publishedAt,publishedAt:post.publishedAt,robotsIndex:true}));
     const supabase=createPublicClient(); const {data,error}=await supabase.from("posts").select("slug,type,updated_at,published_at,robots_index").eq("status","published").eq("robots_index",true).is("deleted_at",null).lte("published_at",new Date().toISOString()).order("published_at",{ascending:false}); if(error) throw new Error(`SITEMAP_POSTS_FAILED: ${error.message}`);
-    return (data??[]).map((row)=>({slug:String(row.slug),type:row.type as ContentType,updatedAt:String(row.updated_at),publishedAt:String(row.published_at),robotsIndex:row.robots_index!==false}));
+    return ((data??[]) as Row[]).map((row: Row)=>({slug:String(row.slug),type:row.type as ContentType,updatedAt:String(row.updated_at),publishedAt:String(row.published_at),robotsIndex:row.robots_index!==false}));
   },
   async listAdmin(filters: ListFilters={}) {
     const {page=1,pageSize=25,search,type,status,categoryId,authorId}=filters; const supabase=await createClient(); const from=Math.max(0,page-1)*pageSize; const ids=await categoryPostIds(categoryId,undefined,true); if(ids&&ids.length===0) return {posts:[],count:0,page,pageSize};
     let query=supabase.from("posts").select(POST_SELECT,{count:"exact"}).is("deleted_at",null).order("updated_at",{ascending:false}).range(from,from+pageSize-1);
     if(search) query=query.ilike("title",`%${search.replace(/[%_]/g,"\\$&")}%`); if(type) query=query.eq("type",type); if(status) query=query.eq("status",status); if(authorId) query=query.eq("author_id",authorId); if(ids) query=query.in("id",ids);
     const {data,error,count}=await query; if(error) throw new Error(`ADMIN_POSTS_QUERY_FAILED: ${error.message}`);
-    const publicClient=createPublicClient(); const url=(bucket:string,path:string)=>publicClient.storage.from(bucket).getPublicUrl(path).data.publicUrl; return {posts:((data??[]) as Row[]).map((row)=>mapPostRow(row,url)),count:count??0,page,pageSize};
+    const publicClient=createPublicClient(); const url=(bucket:string,path:string)=>publicClient.storage.from(bucket).getPublicUrl(path).data.publicUrl; return {posts:((data??[]) as Row[]).map((row: Row)=>mapPostRow(row,url)),count:count??0,page,pageSize};
   },
   async getAdminById(id:string) { const supabase=await createClient(); const {data,error}=await supabase.from("posts").select(POST_SELECT).eq("id",id).maybeSingle(); if(error) throw new Error(`ADMIN_POST_QUERY_FAILED: ${error.message}`); return data as Row|null; },
   async getAdminPost(id:string) { const row=await this.getAdminById(id); if(!row) return null; const publicClient=createPublicClient(); return mapPostRow(row,(bucket,path)=>publicClient.storage.from(bucket).getPublicUrl(path).data.publicUrl); },
