@@ -5,7 +5,7 @@ type Row = Record<string, unknown>;
 export interface MediaItem {
   id: string;
   ownerId: string;
-  bucket: "media" | "avatars";
+  bucket: "blog-media" | "blog-avatars";
   path: string;
   fileName: string;
   mimeType: string;
