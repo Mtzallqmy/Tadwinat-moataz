@@ -8,7 +8,9 @@ export function ShareActions({ title }: { title: string }) {
   const [copied, setCopied] = useState(false);
 
   const currentUrl = () => window.location.href;
-  const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+  const open = (url: string): void => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   async function copyLink() {
     await navigator.clipboard.writeText(currentUrl());
