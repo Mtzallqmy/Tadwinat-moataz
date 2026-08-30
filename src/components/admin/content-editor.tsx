@@ -1,6 +1,7 @@
 "use client";
 
-import type { JSONContent } from "@tiptap/core";
+/* eslint-disable @next/next/no-img-element */
+import type { Editor, JSONContent } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import {
@@ -244,7 +245,7 @@ export function ContentEditor({
   );
 }
 
-function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function EditorToolbar({ editor }: { editor: Editor | null }) {
   const [, forceUpdate] = useState(0);
   useEffect(() => {
     if (!editor) return;
@@ -299,7 +300,7 @@ function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   );
 }
 
-function SlashMenu({ editor, close }: { editor: NonNullable<ReturnType<typeof useEditor>>; close: () => void }) {
+function SlashMenu({ editor, close }: { editor: Editor; close: () => void }) {
   const commands = useMemo(() => [
     ["عنوان", Heading2, () => editor.chain().focus().deleteRange({ from: Math.max(1, editor.state.selection.from - 1), to: editor.state.selection.from }).toggleHeading({ level: 2 }).run()],
     ["صورة", ImageIcon, () => { const src = window.prompt("رابط الصورة", "https://"); if (src && /^https:\/\//i.test(src)) editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).setImage({ src }).run(); }],
