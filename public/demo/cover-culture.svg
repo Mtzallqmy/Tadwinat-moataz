@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+<rect width="800" height="500" rx="28" fill="#F4F0E8"/>
+<circle cx="90" cy="92" r="72" fill="#6A6654" opacity=".08"/>
+<path d="M70 410C180 320 270 355 348 280c60-58 88-145 192-182" fill="none" stroke="#6A6654" stroke-width="2" opacity=".35"/>
+<path d="M470 120c60-28 112-18 145 10v235c-40-24-90-28-145-6V120Zm145 10c35-28 88-38 145-10v239c-55-22-105-18-145 6V130Z" fill="none" stroke="#6A6654" stroke-width="8" opacity=".5"/>
+<rect x="60" y="315" width="280" height="2" fill="#6A6654" opacity=".25"/>
+<text x="60" y="370" fill="#6A6654" font-family="Arial" font-size="20" font-weight="700">CULTURE / ثقافة</text>
+<text x="60" y="405" fill="#6A6654" opacity=".6" font-family="Arial" font-size="13">MOATAZ AL-ALQAMI · EDITORIAL</text>
+</svg>

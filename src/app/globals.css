@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-arabic), "Noto Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --background: #fbfcfc;
+  --foreground: #142128;
+  --card: #ffffff;
+  --card-foreground: #142128;
+  --popover: #ffffff;
+  --popover-foreground: #142128;
+  --primary: #0d7b70;
+  --primary-foreground: #ffffff;
+  --muted: #f1f3f2;
+  --muted-foreground: #69757a;
+  --accent: #edf7f4;
+  --accent-foreground: #163c39;
+  --border: #e5e9e8;
+  --ring: #0d7b70;
+
+  --container: 1240px;
+  --reading: 72ch;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --shadow-soft: 0 8px 28px rgba(20, 33, 40, 0.055);
+  --shadow-card: 0 14px 36px rgba(20, 33, 40, 0.085);
+  --shadow-float: 0 20px 60px rgba(7, 20, 28, 0.18);
+
+  --transition-fast: 150ms;
+  --transition-base: 220ms;
+
+  --space-section: clamp(4rem, 7vw, 6.5rem);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0c1217;
+  --foreground: #eef4f2;
+  --card: #11191f;
+  --card-foreground: #eef4f2;
+  --popover: #10181e;
+  --popover-foreground: #eef4f2;
+  --primary: #4eb2a5;
+  --primary-foreground: #071412;
+  --muted: #182127;
+  --muted-foreground: #9ca9ad;
+  --accent: #142824;
+  --accent-foreground: #e8f5f1;
+  --border: #263239;
+  --ring: #5ac0b2;
+
+  --shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.14);
+  --shadow-card: 0 14px 36px rgba(0, 0, 0, 0.22);
+  --shadow-float: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-arabic), "Noto Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+a, button, input, select, textarea {
+  transition-duration: var(--transition-fast);
+}
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.article-prose {
+  max-width: var(--reading);
+  font-size: clamp(1.03rem, 1.1vw, 1.12rem);
+  line-height: 2.05;
+  color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground));
+}
+
+.article-prose > * + * {
+  margin-top: 1.45rem;
+}
+
+.article-prose h2 {
+  margin-top: 3rem;
+  scroll-margin-top: 7rem;
+  color: var(--foreground);
+  font-size: clamp(1.5rem, 2vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+}
+
+.article-prose h3 {
+  margin-top: 2.25rem;
+  color: var(--foreground);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.article-prose .lead {
+  font-size: 1.16em;
+  line-height: 2;
+  color: var(--foreground);
+}
+
+.article-prose blockquote {
+  margin-inline: 0;
+  border-inline-start: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  padding: 1.1rem 1.25rem;
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
+
+.article-prose ul {
+  list-style: disc;
+  padding-inline-start: 1.4rem;
+}
+
+.article-prose li + li {
+  margin-top: .55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
