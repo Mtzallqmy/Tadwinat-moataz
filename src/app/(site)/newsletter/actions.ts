@@ -4,6 +4,7 @@ import { createPublicClient } from "@/lib/supabase/public";
 import { createOpaqueToken, hashToken, safeTokenInput } from "@/lib/security/tokens";
 import { emailProvider } from "@/lib/email/provider";
 import { sendConfirmationEmail } from "@/lib/email/newsletter";
+import { runAutomations } from "@/lib/automation/runner";
 
 export type NewsletterActionState = { ok: boolean; message: string };
 const invalidToken: NewsletterActionState = { ok: false, message: "الرابط غير صالح أو استُخدم سابقًا." };
@@ -24,8 +25,9 @@ export async function subscribeNewsletterAction(_previous: NewsletterActionState
     const message = error.message.includes("RATE_LIMITED") ? "محاولات كثيرة. حاول لاحقًا." : "تعذر تسجيل الاشتراك الآن.";
     return { ok: false, message };
   }
-  const result = data as { status?: string; double_opt_in?: boolean } | null;
+  const result = data as { id?: string; status?: string; double_opt_in?: boolean } | null;
   if (result?.status === "unsubscribed" || result?.status === "bounced" || result?.status === "complained") return { ok: false, message: "هذا البريد غير متاح للاشتراك تلقائيًا. تواصل معنا إذا رغبت بإعادة التفعيل." };
+  if (result?.id) void runAutomations("newsletter.subscribed", result.id, { source: "website" }).catch((automationError) => console.error("[automation] newsletter.subscribed failed", automationError instanceof Error ? automationError.message : "unknown"));
   if (result?.double_opt_in) {
     if (!emailProvider.configured) return { ok: false, message: "تم تسجيل الطلب، لكن خدمة تأكيد البريد غير مهيأة بعد." };
     try {
