@@ -7,6 +7,7 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(url, publishableKey, {
+    db: { schema: "blog" },
     cookies: {
       getAll() {
         return cookieStore.getAll();
