@@ -81,7 +81,7 @@ export async function getCurrentCmsUser(): Promise<CmsUser | null> {
 
   return {
     id: profile.id,
-    email: typeof claims.email === "string" ? claims.email : undefined,
+    email: typeof claims?.email === "string" ? claims.email : undefined,
     displayName: profile.display_name,
     role: profile.role as AppRole,
     isActive: profile.is_active,
