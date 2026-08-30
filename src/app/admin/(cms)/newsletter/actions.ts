@@ -51,6 +51,7 @@ export async function sendNewsletterTestAction(formData: FormData) {
   const supabase = createAdminClient();
   const { data: settings } = await supabase.from("site_settings").select("newsletter_sender_name,newsletter_sender_email,newsletter_reply_to,newsletter_footer").eq("id", true).single();
   if (!settings?.newsletter_sender_email) throw new Error("NEWSLETTER_SENDER_EMAIL_NOT_CONFIGURED");
-  const template = campaignEmail({ subject: `[اختبار] ${subject}`, body, unsubscribeUrl: `${(process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/u, "")}/newsletter/unsubscribe`, footer: settings.newsletter_footer });
-  await emailProvider.sendEmail({ to, from: `${settings.newsletter_sender_name} <${settings.newsletter_sender_email}>`, replyTo: settings.newsletter_reply_to, ...template, idempotencyKey: `newsletter-test:${Date.now()}` });
+  const emailSubject = `[اختبار] ${subject}`;
+  const template = campaignEmail({ subject: emailSubject, body, unsubscribeUrl: `${(process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/u, "")}/newsletter/unsubscribe`, footer: settings.newsletter_footer });
+  await emailProvider.sendEmail({ to, from: `${settings.newsletter_sender_name} <${settings.newsletter_sender_email}>`, replyTo: settings.newsletter_reply_to, subject: emailSubject, ...template, idempotencyKey: `newsletter-test:${Date.now()}` });
 }
