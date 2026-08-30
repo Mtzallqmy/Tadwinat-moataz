@@ -3,5 +3,8 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
 export function createClient() {
   const { url, publishableKey } = getSupabasePublicEnv();
-  return createBrowserClient(url, publishableKey);
+
+  return createBrowserClient(url, publishableKey, {
+    db: { schema: "blog" },
+  });
 }
