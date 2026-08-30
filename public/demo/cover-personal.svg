@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+<rect width="800" height="500" rx="28" fill="#F1EEF3"/>
+<circle cx="90" cy="92" r="72" fill="#645A72" opacity=".08"/>
+<path d="M70 410C180 320 270 355 348 280c60-58 88-145 192-182" fill="none" stroke="#645A72" stroke-width="2" opacity=".35"/>
+<circle cx="610" cy="190" r="145" fill="#645A72" opacity=".16"/><circle cx="610" cy="190" r="92" fill="none" stroke="#645A72" stroke-width="3" opacity=".55"/>
+<rect x="60" y="315" width="280" height="2" fill="#645A72" opacity=".25"/>
+<text x="60" y="370" fill="#645A72" font-family="Arial" font-size="20" font-weight="700">PERSONAL / شخصي</text>
+<text x="60" y="405" fill="#645A72" opacity=".6" font-family="Arial" font-size="13">MOATAZ AL-ALQAMI · EDITORIAL</text>
+</svg>

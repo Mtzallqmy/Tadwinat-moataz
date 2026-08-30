@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+<rect width="800" height="500" rx="28" fill="#EEF4F2"/>
+<circle cx="90" cy="92" r="72" fill="#226F68" opacity=".08"/>
+<path d="M70 410C180 320 270 355 348 280c60-58 88-145 192-182" fill="none" stroke="#226F68" stroke-width="2" opacity=".35"/>
+<rect x="500" y="130" width="220" height="90" rx="45" transform="rotate(-18 610 175)" fill="#226F68" opacity=".2"/><path d="M555 113l110 126" stroke="#226F68" stroke-width="6" opacity=".5"/>
+<rect x="60" y="315" width="280" height="2" fill="#226F68" opacity=".25"/>
+<text x="60" y="370" fill="#226F68" font-family="Arial" font-size="20" font-weight="700">PHARMACY / صيدلة</text>
+<text x="60" y="405" fill="#226F68" opacity=".6" font-family="Arial" font-size="13">MOATAZ AL-ALQAMI · EDITORIAL</text>
+</svg>
