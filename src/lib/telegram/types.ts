@@ -1,0 +1,9 @@
+export type TelegramRole = "owner" | "admin" | "editor";
+export type TelegramUser = { id: number; first_name?: string; last_name?: string; username?: string };
+export type TelegramChat = { id: number; type: string };
+export type TelegramPhoto = { file_id: string; file_unique_id: string; width: number; height: number; file_size?: number };
+export type TelegramMessage = { message_id: number; from?: TelegramUser; chat: TelegramChat; text?: string; caption?: string; photo?: TelegramPhoto[]; date?: number };
+export type TelegramCallbackQuery = { id: string; from: TelegramUser; message?: TelegramMessage; data?: string };
+export type TelegramUpdate = { update_id: number; message?: TelegramMessage; callback_query?: TelegramCallbackQuery };
+export type InlineButton = { text: string; callback_data?: string; url?: string };
+export type InlineKeyboard = { inline_keyboard: InlineButton[][] };
