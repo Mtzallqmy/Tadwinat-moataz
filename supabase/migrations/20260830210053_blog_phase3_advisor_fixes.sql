@@ -1,0 +1,15 @@
+-- Cover new FKs and avoid duplicate permissive SELECT policies.
+create index blog_posts_og_image_id_idx on blog.posts(og_image_id);
+create index blog_posts_twitter_image_id_idx on blog.posts(twitter_image_id);
+create index blog_redirects_created_by_idx on blog.redirects(created_by);
+create index blog_site_settings_default_og_image_id_idx on blog.site_settings(default_og_image_id);
+
+drop policy blog_post_references_write on blog.post_references;
+create policy blog_post_references_insert on blog.post_references for insert to authenticated with check(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));
+create policy blog_post_references_update on blog.post_references for update to authenticated using(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status)))) with check(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));
+create policy blog_post_references_delete on blog.post_references for delete to authenticated using(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));
+
+drop policy blog_post_faqs_write on blog.post_faqs;
+create policy blog_post_faqs_insert on blog.post_faqs for insert to authenticated with check(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));
+create policy blog_post_faqs_update on blog.post_faqs for update to authenticated using(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status)))) with check(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));
+create policy blog_post_faqs_delete on blog.post_faqs for delete to authenticated using(exists(select 1 from blog.posts p where p.id=post_id and (blog_private.current_app_role() in ('owner'::blog.app_role,'admin'::blog.app_role,'editor'::blog.app_role) or (p.author_id=(select auth.uid()) and p.status<>'published'::blog.post_status))));

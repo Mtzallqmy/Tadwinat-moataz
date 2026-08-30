@@ -1,0 +1,3 @@
+import { NextResponse,type NextRequest } from "next/server";
+import { postsRepository } from "@/lib/repositories/posts";
+export async function GET(request:NextRequest){const query=request.nextUrl.searchParams.get("q")?.trim()??"";if(query.length<2)return NextResponse.json({results:[]});const result=await postsRepository.searchPublic({query,pageSize:6});return NextResponse.json({results:result.posts.map((post)=>({slug:post.slug,title:post.title,excerpt:post.excerpt,category:post.categoryName||post.category,type:post.contentType}))},{headers:{"Cache-Control":"public, max-age=30, s-maxage=60"}});}

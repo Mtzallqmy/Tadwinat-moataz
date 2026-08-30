@@ -1,114 +1,18 @@
 "use server";
-
 import type { JSONContent } from "@tiptap/core";
-import { revalidatePath } from "next/cache";
-import { assertCmsUser, hasCapability } from "@/lib/auth/authorization";
+import { assertCmsUser,hasCapability } from "@/lib/auth/authorization";
 import { postsRepository } from "@/lib/repositories/posts";
 import { postInputSchema } from "@/lib/validation/content";
 import { createClient } from "@/lib/supabase/server";
-
-export interface SavePostPayload {
-  id?: string;
-  title: string;
-  slug?: string;
-  excerpt?: string;
-  type: "article" | "note" | "diary" | "story" | "link" | "page";
-  status: "draft" | "review" | "scheduled" | "published" | "archived";
-  contentJson: JSONContent;
-  coverImageId?: string | null;
-  externalUrl?: string | null;
-  featured?: boolean;
-  categoryIds?: string[];
-  primaryCategoryId?: string | null;
-  tagIds?: string[];
-  scheduledAt?: string | null;
-  revisionSource?: "manual" | "autosave" | "publish";
-}
-
-export type SavePostResult =
-  | { ok: true; id: string; slug: string; savedAt: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
-
-export async function savePostAction(payload: SavePostPayload): Promise<SavePostResult> {
-  const user = await assertCmsUser("content.create");
-  const parsed = postInputSchema.safeParse({
-    ...payload,
-    excerpt: payload.excerpt ?? "",
-    categoryIds: payload.categoryIds ?? [],
-    tagIds: payload.tagIds ?? [],
-    featured: payload.featured ?? false,
-  });
-
-  if (!parsed.success) {
-    const flattened = parsed.error.flatten();
-    return { ok: false, error: "تحقق من الحقول المطلوبة.", fieldErrors: flattened.fieldErrors as Record<string, string[]> };
-  }
-
-  if (["published", "scheduled"].includes(parsed.data.status) && !hasCapability(user.role, "content.publish")) {
-    return { ok: false, error: "ليست لديك صلاحية النشر." };
-  }
-
-  try {
-    const slug = await postsRepository.ensureUniqueSlug(
-      parsed.data.slug || parsed.data.title,
-      parsed.data.id,
-    );
-    const stored = await postsRepository.deriveStoredContent(parsed.data.contentJson as JSONContent);
-    const supabase = await createClient();
-    const revisionSource = payload.revisionSource ?? (parsed.data.status === "published" ? "publish" : "manual");
-
-    const { data, error } = await supabase.rpc("cms_save_post", {
-      p_id: parsed.data.id ?? null,
-      p_title: parsed.data.title,
-      p_slug: slug,
-      p_excerpt: parsed.data.excerpt,
-      p_type: parsed.data.type,
-      p_status: parsed.data.status,
-      p_content_json: stored.content_json,
-      p_content_html: stored.content_html,
-      p_content_text: stored.content_text,
-      p_cover_image_id: parsed.data.coverImageId ?? null,
-      p_external_url: parsed.data.externalUrl ?? null,
-      p_featured: parsed.data.featured,
-      p_scheduled_at: parsed.data.scheduledAt ?? null,
-      p_category_ids: parsed.data.categoryIds,
-      p_primary_category_id: parsed.data.primaryCategoryId ?? null,
-      p_tag_ids: parsed.data.tagIds,
-      p_revision_source: revisionSource,
-    });
-
-    if (error || typeof data !== "string") {
-      console.error("[cms] save post failed", { code: error?.code, message: error?.message });
-      return { ok: false, error: "تعذر حفظ المحتوى. حاول مرة أخرى." };
-    }
-
-    revalidatePath("/", "layout");
-    revalidatePath("/posts");
-    revalidatePath(`/posts/${slug}`);
-    revalidatePath("/admin/content");
-    revalidatePath(`/admin/content/${data}/edit`);
-
-    return { ok: true, id: data, slug, savedAt: new Date().toISOString() };
-  } catch (error) {
-    console.error("[cms] save post exception", error instanceof Error ? error.message : "unknown");
-    return { ok: false, error: "تعذر حفظ المحتوى. حاول مرة أخرى." };
-  }
-}
-
-export async function archivePostAction(id: string) {
-  const user = await assertCmsUser("content.create");
-  const post = await postsRepository.getAdminById(id);
-  if (!post) return { ok: false, error: "المحتوى غير موجود." } as const;
-
-  if (user.role === "author" && post.author_id !== user.id) {
-    return { ok: false, error: "لا يمكنك أرشفة محتوى مستخدم آخر." } as const;
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.from("posts").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id);
-  if (error) return { ok: false, error: "تعذر أرشفة المحتوى." } as const;
-  await supabase.from("audit_logs").insert({ user_id: user.id, action: "archive_post", entity_type: "post", entity_id: id, metadata: {} });
-  revalidatePath("/admin/content");
-  revalidatePath("/", "layout");
-  return { ok: true } as const;
-}
+import { generateExcerpt } from "@/lib/content/quality";
+import { revalidatePublishing } from "@/lib/cache/revalidation";
+import type { PostFaq,PostReference } from "@/types/content";
+export interface SavePostPayload{id?:string;title:string;slug?:string;excerpt?:string;type:"article"|"note"|"diary"|"story"|"link"|"page";status:"draft"|"review"|"scheduled"|"published"|"archived";contentJson:JSONContent;coverImageId?:string|null;externalUrl?:string|null;featured?:boolean;categoryIds?:string[];primaryCategoryId?:string|null;tagIds?:string[];scheduledAt?:string|null;revisionSource?:"manual"|"autosave"|"publish";summary?:string|null;keyPoints?:string[];seoTitle?:string|null;seoDescription?:string|null;canonicalUrl?:string|null;robotsIndex?:boolean;robotsFollow?:boolean;ogTitle?:string|null;ogDescription?:string|null;ogImageId?:string|null;twitterTitle?:string|null;twitterDescription?:string|null;twitterImageId?:string|null;focusKeyword?:string|null;medicalReviewed?:boolean;references?:PostReference[];faqs?:PostFaq[];}
+export type SavePostResult={ok:true;id:string;slug:string;savedAt:string;warning?:string}|{ok:false;error:string;fieldErrors?:Record<string,string[]>};
+async function auditRevalidationFailure(id:string,userId:string,error:unknown){try{const supabase=await createClient();await supabase.from("audit_logs").insert({user_id:userId,action:"revalidation_failed",entity_type:"post",entity_id:id,metadata:{error:error instanceof Error?error.message:"unknown"}});}catch{/* preserve successful database write */}}
+export async function savePostAction(payload:SavePostPayload):Promise<SavePostResult>{const user=await assertCmsUser("content.create");const previous=payload.id?await postsRepository.getAdminPost(payload.id):null;const stored=await postsRepository.deriveStoredContent(payload.contentJson);const parsed=postInputSchema.safeParse({...payload,excerpt:payload.excerpt?.trim()||generateExcerpt(stored.content_text),categoryIds:payload.categoryIds??[],tagIds:payload.tagIds??[],featured:payload.featured??false,keyPoints:payload.keyPoints??[],references:payload.references??[],faqs:payload.faqs??[],robotsIndex:payload.robotsIndex??true,robotsFollow:payload.robotsFollow??true,medicalReviewed:payload.medicalReviewed??false});if(!parsed.success){const flattened=parsed.error.flatten();return{ok:false,error:"تحقق من الحقول المطلوبة.",fieldErrors:flattened.fieldErrors as Record<string,string[]>};}if(["published","scheduled"].includes(parsed.data.status)&&!hasCapability(user.role,"content.publish"))return{ok:false,error:"ليست لديك صلاحية النشر."};try{const slug=await postsRepository.ensureUniqueSlug(parsed.data.slug||parsed.data.title,parsed.data.id);const supabase=await createClient();const revisionSource=payload.revisionSource??(parsed.data.status==="published"?"publish":"manual");const phase3={summary:parsed.data.summary??null,key_points:parsed.data.keyPoints,seo_title:parsed.data.seoTitle??null,seo_description:parsed.data.seoDescription??null,canonical_url:parsed.data.canonicalUrl??null,robots_index:parsed.data.robotsIndex,robots_follow:parsed.data.robotsFollow,og_title:parsed.data.ogTitle??null,og_description:parsed.data.ogDescription??null,og_image_id:parsed.data.ogImageId??null,twitter_title:parsed.data.twitterTitle??null,twitter_description:parsed.data.twitterDescription??null,twitter_image_id:parsed.data.twitterImageId??null,focus_keyword:parsed.data.focusKeyword??null,medical_reviewed:parsed.data.medicalReviewed,references:parsed.data.references.map((ref,index)=>({title:ref.title,url:ref.url||null,publisher:ref.publisher||null,author:ref.author||null,published_date:ref.publishedDate||null,accessed_at:ref.accessedAt||null,sort_order:index})),faqs:parsed.data.faqs.map((faq,index)=>({question:faq.question,answer:faq.answer,sort_order:index}))};const{data,error}=await supabase.rpc("cms_save_post_v3",{p_id:parsed.data.id??null,p_title:parsed.data.title,p_slug:slug,p_excerpt:parsed.data.excerpt,p_type:parsed.data.type,p_status:parsed.data.status,p_content_json:stored.content_json,p_content_html:stored.content_html,p_content_text:stored.content_text,p_cover_image_id:parsed.data.coverImageId??null,p_external_url:parsed.data.externalUrl??null,p_featured:parsed.data.featured,p_scheduled_at:parsed.data.scheduledAt??null,p_category_ids:parsed.data.categoryIds,p_primary_category_id:parsed.data.primaryCategoryId??null,p_tag_ids:parsed.data.tagIds,p_revision_source:revisionSource,p_phase3:phase3});if(error||typeof data!=="string"){console.error("[cms] save post failed",{code:error?.code,message:error?.message});return{ok:false,error:"تعذر حفظ المحتوى. حاول مرة أخرى."};}let warning:string|undefined;const touchesPublic=previous?.status==="published"||parsed.data.status==="published";if(touchesPublic){try{await revalidatePublishing({slug,categorySlugs:previous?.category?[previous.category]:undefined});}catch(revalidationError){warning="تم حفظ المحتوى لكن تعذر تحديث بعض الذاكرة المؤقتة؛ ستحاول طبقة الكاش تحديثها تلقائيًا.";await auditRevalidationFailure(data,user.id,revalidationError);}}return{ok:true,id:data,slug,savedAt:new Date().toISOString(),warning};}catch(error){console.error("[cms] save post exception",error instanceof Error?error.message:"unknown");return{ok:false,error:"تعذر حفظ المحتوى. حاول مرة أخرى."};}}
+async function mutatePublication(id:string,mode:"publish"|"unpublish"|"cancel"|"archive"){const user=await assertCmsUser(mode==="archive"?"content.create":"content.publish");const post=await postsRepository.getAdminPost(id);if(!post)return{ok:false,error:"المحتوى غير موجود."} as const;if(user.role==="author"&&post.author?.id!==user.id)return{ok:false,error:"لا يمكنك تعديل محتوى مستخدم آخر."} as const;const supabase=await createClient();const now=new Date().toISOString();const patch=mode==="publish"?{status:"published",published_at:post.publishedAt||now,scheduled_at:null,last_publish_error:null}:mode==="unpublish"?{status:"draft",published_at:null,scheduled_at:null}:mode==="cancel"?{status:"draft",scheduled_at:null,last_publish_error:null,publish_attempts:0}:{status:"archived",archived_at:now,scheduled_at:null};const{error}=await supabase.from("posts").update(patch).eq("id",id);if(error)return{ok:false,error:"تعذر تحديث حالة النشر."} as const;const action=mode==="publish"?"publish_post":mode==="unpublish"?"unpublish_post":mode==="cancel"?"cancel_scheduled_post":"archive_post";await supabase.from("audit_logs").insert({user_id:user.id,action,entity_type:"post",entity_id:id,metadata:{source:"admin_action"}});try{await revalidatePublishing({slug:post.slug,categorySlugs:[post.category]});}catch(error){await auditRevalidationFailure(id,user.id,error);}return{ok:true} as const;}
+export async function publishPostNowAction(id:string){return mutatePublication(id,"publish");}
+export async function unpublishPostAction(id:string){return mutatePublication(id,"unpublish");}
+export async function cancelScheduleAction(id:string){return mutatePublication(id,"cancel");}
+export async function archivePostAction(id:string){return mutatePublication(id,"archive");}

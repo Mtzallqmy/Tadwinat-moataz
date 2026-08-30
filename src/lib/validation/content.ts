@@ -1,62 +1,10 @@
 import { z } from "zod";
-
-export const contentTypeSchema = z.enum(["article", "note", "diary", "story", "link", "page"]);
-export const postStatusSchema = z.enum(["draft", "review", "scheduled", "published", "archived"]);
-
-export const editorDocumentSchema = z.object({
-  type: z.literal("doc"),
-  content: z.array(z.unknown()).optional(),
-}).passthrough();
-
-export const postInputSchema = z.object({
-  id: z.uuid().optional(),
-  title: z.string().trim().min(1).max(240),
-  slug: z.string().trim().min(1).max(220).optional(),
-  excerpt: z.string().trim().max(1000).default(""),
-  type: contentTypeSchema.default("article"),
-  status: postStatusSchema.default("draft"),
-  contentJson: editorDocumentSchema,
-  coverImageId: z.uuid().nullable().optional(),
-  externalUrl: z.url().nullable().optional(),
-  featured: z.boolean().default(false),
-  categoryIds: z.array(z.uuid()).max(12).default([]),
-  primaryCategoryId: z.uuid().nullable().optional(),
-  tagIds: z.array(z.uuid()).max(40).default([]),
-  scheduledAt: z.iso.datetime({ offset: true }).nullable().optional(),
-}).superRefine((data, ctx) => {
-  if (data.type === "link" && !data.externalUrl) {
-    ctx.addIssue({ code: "custom", path: ["externalUrl"], message: "الرابط الخارجي مطلوب لهذا النوع." });
-  }
-  if (data.status === "scheduled" && !data.scheduledAt) {
-    ctx.addIssue({ code: "custom", path: ["scheduledAt"], message: "حدد موعد النشر." });
-  }
-  if (data.primaryCategoryId && !data.categoryIds.includes(data.primaryCategoryId)) {
-    ctx.addIssue({ code: "custom", path: ["primaryCategoryId"], message: "القسم الرئيسي يجب أن يكون ضمن أقسام المحتوى." });
-  }
-});
-
-export const categoryInputSchema = z.object({
-  id: z.uuid().optional(),
-  name: z.string().trim().min(1).max(120),
-  slug: z.string().trim().min(1).max(160).optional(),
-  description: z.string().trim().max(1000).default(""),
-  icon: z.string().trim().min(1).max(80).default("folder"),
-  color: z.string().trim().max(40).nullable().optional(),
-  parentId: z.uuid().nullable().optional(),
-  sortOrder: z.coerce.number().int().min(-10000).max(10000).default(0),
-  isActive: z.boolean().default(true),
-});
-
-export const tagInputSchema = z.object({
-  id: z.uuid().optional(),
-  name: z.string().trim().min(1).max(120),
-  slug: z.string().trim().min(1).max(160).optional(),
-  description: z.string().trim().max(1000).nullable().optional(),
-});
-
-export const mediaMetadataSchema = z.object({
-  id: z.uuid(),
-  altText: z.string().trim().max(500),
-  caption: z.string().trim().max(1000).nullable().optional(),
-  credit: z.string().trim().max(500).nullable().optional(),
-});
+export const contentTypeSchema=z.enum(["article","note","diary","story","link","page"]);export const postStatusSchema=z.enum(["draft","review","scheduled","published","archived"]);
+export const editorDocumentSchema=z.object({type:z.literal("doc"),content:z.array(z.unknown()).optional()}).passthrough();
+const optionalText=(max:number)=>z.string().trim().max(max).nullable().optional();
+const referenceSchema=z.object({id:z.uuid().optional(),title:z.string().trim().min(1).max(500),url:z.union([z.url(),z.literal("")]).nullable().optional(),publisher:optionalText(300),author:optionalText(300),publishedDate:z.union([z.iso.date(),z.literal("")]).nullable().optional(),accessedAt:z.union([z.iso.date(),z.literal("")]).nullable().optional(),sortOrder:z.number().int().optional()});
+const faqSchema=z.object({id:z.uuid().optional(),question:z.string().trim().min(1).max(500),answer:z.string().trim().min(1).max(5000),sortOrder:z.number().int().optional()});
+export const postInputSchema=z.object({id:z.uuid().optional(),title:z.string().trim().min(1).max(240),slug:z.string().trim().min(1).max(220).optional(),excerpt:z.string().trim().max(1000).default(""),type:contentTypeSchema.default("article"),status:postStatusSchema.default("draft"),contentJson:editorDocumentSchema,coverImageId:z.uuid().nullable().optional(),externalUrl:z.url().nullable().optional(),featured:z.boolean().default(false),categoryIds:z.array(z.uuid()).max(12).default([]),primaryCategoryId:z.uuid().nullable().optional(),tagIds:z.array(z.uuid()).max(40).default([]),scheduledAt:z.iso.datetime({offset:true}).nullable().optional(),summary:optionalText(3000),keyPoints:z.array(z.string().trim().min(1).max(500)).max(20).default([]),seoTitle:optionalText(300),seoDescription:optionalText(1000),canonicalUrl:optionalText(2000),robotsIndex:z.boolean().default(true),robotsFollow:z.boolean().default(true),ogTitle:optionalText(300),ogDescription:optionalText(1000),ogImageId:z.uuid().nullable().optional(),twitterTitle:optionalText(300),twitterDescription:optionalText(1000),twitterImageId:z.uuid().nullable().optional(),focusKeyword:optionalText(300),medicalReviewed:z.boolean().default(false),references:z.array(referenceSchema).max(100).default([]),faqs:z.array(faqSchema).max(30).default([])}).superRefine((data,ctx)=>{if(data.type==="link"&&!data.externalUrl)ctx.addIssue({code:"custom",path:["externalUrl"],message:"الرابط الخارجي مطلوب لهذا النوع."});if(data.status==="scheduled"&&!data.scheduledAt)ctx.addIssue({code:"custom",path:["scheduledAt"],message:"حدد موعد النشر."});if(data.primaryCategoryId&&!data.categoryIds.includes(data.primaryCategoryId))ctx.addIssue({code:"custom",path:["primaryCategoryId"],message:"القسم الرئيسي يجب أن يكون ضمن أقسام المحتوى."});if(data.canonicalUrl&&!(data.canonicalUrl.startsWith("/")||/^https?:\/\//i.test(data.canonicalUrl)))ctx.addIssue({code:"custom",path:["canonicalUrl"],message:"استخدم رابطًا مطلقًا أو مسارًا يبدأ بـ /."});});
+export const categoryInputSchema=z.object({id:z.uuid().optional(),name:z.string().trim().min(1).max(120),slug:z.string().trim().min(1).max(160).optional(),description:z.string().trim().max(1000).default(""),icon:z.string().trim().min(1).max(80).default("folder"),color:z.string().trim().max(40).nullable().optional(),parentId:z.uuid().nullable().optional(),sortOrder:z.coerce.number().int().min(-10000).max(10000).default(0),isActive:z.boolean().default(true)});
+export const tagInputSchema=z.object({id:z.uuid().optional(),name:z.string().trim().min(1).max(120),slug:z.string().trim().min(1).max(160).optional(),description:z.string().trim().max(1000).nullable().optional()});
+export const mediaMetadataSchema=z.object({id:z.uuid(),altText:z.string().trim().max(500),caption:z.string().trim().max(1000).nullable().optional(),credit:z.string().trim().max(500).nullable().optional()});
