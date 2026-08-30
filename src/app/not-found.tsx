@@ -1,19 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, Compass } from "lucide-react";
+import { Search } from "lucide-react";
 import { Container } from "@/components/shared/container";
-
-export default function NotFound() {
-  return (
-    <main className="grid min-h-[75vh] place-items-center py-16">
-      <Container className="text-center">
-        <Compass className="mx-auto size-10 text-primary" aria-hidden="true" />
-        <p className="mt-5 text-sm font-bold text-primary">404</p>
-        <h1 className="mt-2 text-4xl font-black">هذه الصفحة غير موجودة</h1>
-        <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted-foreground">قد يكون الرابط قديمًا أو أن الصفحة لم تُنشأ بعد. يمكنك العودة إلى الصفحة الرئيسية ومتابعة التصفح.</p>
-        <Link href="/" className="mt-7 inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground">
-          <ArrowRight className="size-4" aria-hidden="true" /> العودة للرئيسية
-        </Link>
-      </Container>
-    </main>
-  );
-}
+import { postsRepository } from "@/lib/repositories/posts";
+import { categoriesRepository } from "@/lib/repositories/categories";
+export default async function NotFound(){const [latest,categories]=await Promise.all([postsRepository.listPublished({pageSize:4}),categoriesRepository.listPublic()]);return <main><Container className="py-20 text-center"><p className="text-sm font-black text-primary">404</p><h1 className="mt-3 text-4xl font-black">الصفحة غير موجودة</h1><p className="mx-auto mt-4 max-w-xl leading-8 text-muted-foreground">قد يكون الرابط تغيّر أو حُذف. استخدم البحث أو انتقل إلى أحد الأقسام.</p><form action="/search" method="get" className="relative mx-auto mt-7 max-w-xl"><Search className="absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"/><input name="q" className="h-12 w-full rounded-xl border border-border bg-card pr-12 pl-4" placeholder="ابحث في الموقع"/></form><div className="mt-7 flex flex-wrap justify-center gap-2"><Link href="/" className="rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">الرئيسية</Link>{categories.slice(0,5).map((category)=><Link key={category.slug} href={`/category/${category.slug}`} className="rounded-full border border-border px-4 py-2 text-sm font-bold">{category.name}</Link>)}</div>{latest.posts.length?<section className="mx-auto mt-12 max-w-3xl text-right"><h2 className="text-xl font-black">أحدث المقالات</h2><div className="mt-4 grid gap-3">{latest.posts.map((post)=><Link key={post.slug} href={`/posts/${post.slug}`} className="rounded-xl border border-border bg-card p-4 font-bold hover:border-primary/30">{post.title}</Link>)}</div></section>:null}</Container></main>;}
