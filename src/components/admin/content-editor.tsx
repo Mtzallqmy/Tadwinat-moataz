@@ -1,322 +1,544 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
 import type { Editor, JSONContent } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
-  Bold, Braces, Code2, Heading1, Heading2, Heading3, Highlighter, ImageIcon,
-  Italic, Link2, List, ListChecks, ListOrdered, Minus, Pilcrow, Quote, Save,
-  Strikethrough, Table2, Underline, AlertTriangle, Info, FileText,
+  Bold,
+  CalendarClock,
+  Code2,
+  Eye,
+  Heading2,
+  Heading3,
+  ImageIcon,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Plus,
+  Quote,
+  Save,
+  Send,
+  Table2,
+  Trash2,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { contentExtensions } from "@/lib/content/extensions";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { savePostAction, type SavePostPayload } from "@/app/admin/(cms)/content/actions";
+import { contentExtensions } from "@/lib/content/extensions";
+import { buildQualityChecklist, countWords, headingWarnings, readingMinutes } from "@/lib/content/quality";
+import { slugify } from "@/lib/content/slug";
+import { zonedDateTimeToUtc } from "@/lib/datetime/timezone";
+import type { MediaItem } from "@/lib/repositories/media";
+import type { ContentType, PostFaq, PostReference, PostStatus } from "@/types/content";
+import type { EditorInitialPost } from "@/types/editor";
 
-type Option = { id: string; name: string; slug?: string };
-type MediaOption = { id: string; label: string; url: string; alt: string };
-
-type InitialPost = {
-  id?: string;
-  title?: string;
-  slug?: string;
-  excerpt?: string;
-  type?: SavePostPayload["type"];
-  status?: SavePostPayload["status"];
-  contentJson?: JSONContent;
-  coverImageId?: string | null;
-  externalUrl?: string | null;
-  featured?: boolean;
-  categoryIds?: string[];
-  primaryCategoryId?: string | null;
-  tagIds?: string[];
-  scheduledAt?: string | null;
-};
+type Option = { id: string; name: string; slug: string };
+type RevisionSource = NonNullable<SavePostPayload["revisionSource"]>;
 
 const emptyDoc: JSONContent = { type: "doc", content: [{ type: "paragraph" }] };
+const buttonPrimary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-primary-foreground disabled:opacity-50";
+const buttonSecondary = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-bold hover:bg-accent disabled:opacity-50";
+
+function zonedInput(iso: string | null | undefined, timeZone: string) {
+  if (!iso) return "";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date(iso))
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
 
 export function ContentEditor({
-  initial = {},
+  initial,
   categories,
   tags,
   media,
   canPublish,
+  timezone,
 }: {
-  initial?: InitialPost;
+  initial?: EditorInitialPost;
   categories: Option[];
   tags: Option[];
-  media: MediaOption[];
+  media: MediaItem[];
   canPublish: boolean;
+  timezone: string;
 }) {
-  const [postId, setPostId] = useState(initial.id);
-  const [title, setTitle] = useState(initial.title ?? "");
-  const [slug, setSlug] = useState(initial.slug ?? "");
-  const [excerpt, setExcerpt] = useState(initial.excerpt ?? "");
-  const [type, setType] = useState<SavePostPayload["type"]>(initial.type ?? "article");
-  const [status, setStatus] = useState<SavePostPayload["status"]>(initial.status ?? "draft");
-  const [coverImageId, setCoverImageId] = useState(initial.coverImageId ?? "");
-  const [externalUrl, setExternalUrl] = useState(initial.externalUrl ?? "");
-  const [featured, setFeatured] = useState(initial.featured ?? false);
-  const [categoryIds, setCategoryIds] = useState<string[]>(initial.categoryIds ?? []);
-  const [primaryCategoryId, setPrimaryCategoryId] = useState(initial.primaryCategoryId ?? "");
-  const [tagIds, setTagIds] = useState<string[]>(initial.tagIds ?? []);
-  const [scheduledAt, setScheduledAt] = useState(initial.scheduledAt?.slice(0, 16) ?? "");
-  const [documentJson, setDocumentJson] = useState<JSONContent>(initial.contentJson ?? emptyDoc);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [saveMessage, setSaveMessage] = useState("");
+  const router = useRouter();
+  const [postId, setPostId] = useState(initial?.id);
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [slug, setSlug] = useState(initial?.slug ?? "");
+  const [excerpt, setExcerpt] = useState(initial?.excerpt ?? "");
+  const [type, setType] = useState<ContentType>(initial?.type ?? "article");
+  const [status, setStatus] = useState<PostStatus>(initial?.status ?? "draft");
+  const [coverImageId, setCoverImageId] = useState(initial?.coverImageId ?? "");
+  const [externalUrl, setExternalUrl] = useState(initial?.externalUrl ?? "");
+  const [featured, setFeatured] = useState(initial?.featured ?? false);
+  const [categoryIds, setCategoryIds] = useState<string[]>(initial?.categoryIds ?? []);
+  const [primaryCategoryId, setPrimaryCategoryId] = useState(initial?.primaryCategoryId ?? "");
+  const [tagIds, setTagIds] = useState<string[]>(initial?.tagIds ?? []);
+  const [scheduleLocal, setScheduleLocal] = useState(zonedInput(initial?.scheduledAt, timezone));
+  const [summary, setSummary] = useState(initial?.summary ?? "");
+  const [keyPoints, setKeyPoints] = useState((initial?.keyPoints ?? []).join("\n"));
+  const [seoTitle, setSeoTitle] = useState(initial?.seoTitle ?? "");
+  const [seoDescription, setSeoDescription] = useState(initial?.seoDescription ?? "");
+  const [canonicalUrl, setCanonicalUrl] = useState(initial?.canonicalUrl ?? "");
+  const [robotsIndex, setRobotsIndex] = useState(initial?.robotsIndex ?? true);
+  const [robotsFollow, setRobotsFollow] = useState(initial?.robotsFollow ?? true);
+  const [ogTitle, setOgTitle] = useState(initial?.ogTitle ?? "");
+  const [ogDescription, setOgDescription] = useState(initial?.ogDescription ?? "");
+  const [ogImageId, setOgImageId] = useState(initial?.ogImageId ?? "");
+  const [twitterTitle, setTwitterTitle] = useState(initial?.twitterTitle ?? "");
+  const [twitterDescription, setTwitterDescription] = useState(initial?.twitterDescription ?? "");
+  const [twitterImageId, setTwitterImageId] = useState(initial?.twitterImageId ?? "");
+  const [focusKeyword, setFocusKeyword] = useState(initial?.focusKeyword ?? "");
+  const [medicalReviewed, setMedicalReviewed] = useState(initial?.medicalReviewed ?? false);
+  const [references, setReferences] = useState<PostReference[]>(initial?.references ?? []);
+  const [faqs, setFaqs] = useState<PostFaq[]>(initial?.faqs ?? []);
+  const [documentJson, setDocumentJson] = useState<JSONContent>(initial?.contentJson ?? emptyDoc);
   const [dirty, setDirty] = useState(false);
-  const [slashOpen, setSlashOpen] = useState(false);
-  const saveSequence = useRef(0);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [publishOpen, setPublishOpen] = useState(false);
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
       ...contentExtensions,
-      Placeholder.configure({ placeholder: "ابدأ الكتابة… واكتب / لإدراج كتلة." }),
+      Placeholder.configure({ placeholder: "ابدأ كتابة المحتوى…" }),
     ],
-    content: initial.contentJson ?? emptyDoc,
+    content: initial?.contentJson ?? emptyDoc,
     editorProps: {
       attributes: {
-        class: "cms-editor-content min-h-[48vh] outline-none",
-        spellcheck: "true",
+        class: "cms-editor-content min-h-[52vh] outline-none",
         dir: "rtl",
+        spellcheck: "true",
         "aria-label": "محرر المحتوى",
       },
     },
     onUpdate({ editor: currentEditor }) {
-      const json = currentEditor.getJSON();
-      setDocumentJson(json);
+      setDocumentJson(currentEditor.getJSON());
       setDirty(true);
-      setSaveState("idle");
-      const text = currentEditor.state.selection.$from.parent.textContent;
-      setSlashOpen(text.trimEnd().endsWith("/"));
     },
   });
 
-  const buildPayload = useCallback((revisionSource: SavePostPayload["revisionSource"]): SavePostPayload => ({
-    id: postId,
-    title,
-    slug: slug || undefined,
-    excerpt,
-    type,
-    status,
-    contentJson: documentJson,
-    coverImageId: coverImageId || null,
-    externalUrl: externalUrl || null,
-    featured,
-    categoryIds,
-    primaryCategoryId: primaryCategoryId || null,
-    tagIds,
-    scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-    revisionSource,
-  }), [postId, title, slug, excerpt, type, status, documentJson, coverImageId, externalUrl, featured, categoryIds, primaryCategoryId, tagIds, scheduledAt]);
-
-  const persist = useCallback(async (source: SavePostPayload["revisionSource"] = "manual") => {
-    if (!title.trim()) {
-      if (source !== "autosave") {
-        setSaveState("error");
-        setSaveMessage("أدخل عنوانًا قبل الحفظ.");
+  const persist = useCallback(
+    async (source: RevisionSource = "manual", statusOverride?: PostStatus) => {
+      if (!editor || saving) return false;
+      if (!title.trim()) {
+        if (source !== "autosave") setMessage("أدخل عنوانًا قبل الحفظ.");
+        return false;
       }
-      return null;
-    }
 
-    const sequence = ++saveSequence.current;
-    setSaveState("saving");
-    setSaveMessage(source === "autosave" ? "حفظ تلقائي…" : "جارٍ الحفظ…");
-    const result = await savePostAction(buildPayload(source));
-    if (sequence !== saveSequence.current) return result;
+      setSaving(true);
+      setMessage(source === "autosave" ? "حفظ تلقائي…" : "جارٍ الحفظ…");
+      const effectiveStatus = statusOverride ?? status;
 
-    if (!result.ok) {
-      setSaveState("error");
-      setSaveMessage(result.error);
-      return result;
-    }
+      try {
+        const scheduledAt = effectiveStatus === "scheduled"
+          ? scheduleLocal
+            ? zonedDateTimeToUtc(scheduleLocal, timezone)
+            : null
+          : null;
 
-    setPostId(result.id);
-    setSlug(result.slug);
-    setDirty(false);
-    setSaveState("saved");
-    setSaveMessage(`تم الحفظ ${new Intl.DateTimeFormat("ar", { hour: "2-digit", minute: "2-digit" }).format(new Date(result.savedAt))}`);
+        if (effectiveStatus === "scheduled" && !scheduledAt) {
+          setMessage("حدد موعد النشر.");
+          return false;
+        }
 
-    if (!initial.id && window.location.pathname.endsWith("/new")) {
-      window.history.replaceState({}, "", `/admin/content/${result.id}/edit`);
-    }
-    return result;
-  }, [buildPayload, initial.id, title]);
+        const result = await savePostAction({
+          id: postId,
+          title,
+          slug: slug || undefined,
+          excerpt,
+          type,
+          status: effectiveStatus,
+          contentJson: editor.getJSON(),
+          coverImageId: coverImageId || null,
+          externalUrl: externalUrl || null,
+          featured,
+          categoryIds,
+          primaryCategoryId: primaryCategoryId || null,
+          tagIds,
+          scheduledAt,
+          revisionSource: source,
+          summary: summary || null,
+          keyPoints: keyPoints.split("\n").map((item) => item.trim()).filter(Boolean),
+          seoTitle: seoTitle || null,
+          seoDescription: seoDescription || null,
+          canonicalUrl: canonicalUrl || null,
+          robotsIndex,
+          robotsFollow,
+          ogTitle: ogTitle || null,
+          ogDescription: ogDescription || null,
+          ogImageId: ogImageId || null,
+          twitterTitle: twitterTitle || null,
+          twitterDescription: twitterDescription || null,
+          twitterImageId: twitterImageId || null,
+          focusKeyword: focusKeyword || null,
+          medicalReviewed,
+          references,
+          faqs,
+        });
+
+        if (!result.ok) {
+          setMessage(result.error);
+          return false;
+        }
+
+        setPostId(result.id);
+        setSlug(result.slug);
+        setStatus(effectiveStatus);
+        setDirty(false);
+        setMessage(
+          result.warning ??
+            `تم الحفظ ${new Intl.DateTimeFormat("ar", { timeStyle: "short" }).format(new Date(result.savedAt))}`,
+        );
+
+        if (!initial?.id && window.location.pathname.endsWith("/new")) {
+          router.replace(`/admin/content/${result.id}/edit`);
+        }
+        router.refresh();
+        return true;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "تعذر حفظ المحتوى.");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      editor,
+      saving,
+      title,
+      status,
+      scheduleLocal,
+      timezone,
+      postId,
+      slug,
+      excerpt,
+      type,
+      coverImageId,
+      externalUrl,
+      featured,
+      categoryIds,
+      primaryCategoryId,
+      tagIds,
+      summary,
+      keyPoints,
+      seoTitle,
+      seoDescription,
+      canonicalUrl,
+      robotsIndex,
+      robotsFollow,
+      ogTitle,
+      ogDescription,
+      ogImageId,
+      twitterTitle,
+      twitterDescription,
+      twitterImageId,
+      focusKeyword,
+      medicalReviewed,
+      references,
+      faqs,
+      initial?.id,
+      router,
+    ],
+  );
 
   useEffect(() => {
-    if (!dirty || !title.trim()) return;
-    const timer = window.setTimeout(() => void persist("autosave"), 1800);
+    if (!dirty || !title.trim() || saving) return;
+    const timer = window.setTimeout(() => void persist("autosave"), 3000);
     return () => window.clearTimeout(timer);
-  }, [dirty, title, documentJson, excerpt, slug, type, status, coverImageId, externalUrl, featured, categoryIds, primaryCategoryId, tagIds, scheduledAt, persist]);
+  }, [dirty, title, saving, documentJson, excerpt, slug, persist]);
 
   useEffect(() => {
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+    const warn = (event: BeforeUnloadEvent) => {
       if (!dirty) return;
       event.preventDefault();
       event.returnValue = "";
     };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const previewHref = postId ? `/admin/preview/${postId}` : null;
+  const selectedCategories = categories.filter((item) => categoryIds.includes(item.id));
+  const isMedical = selectedCategories.some((item) => ["medical", "pharmacy"].includes(item.slug));
+  const cover = media.find((item) => item.id === coverImageId);
+  const contentText = editor?.getText({ blockSeparator: "\n" }) ?? "";
+  const quality = buildQualityChecklist({
+    title,
+    excerpt,
+    contentText,
+    categoryCount: categoryIds.length,
+    coverId: coverImageId || null,
+    coverAlt: cover?.altText,
+    seoDescription,
+    references,
+    contentHtml: editor?.getHTML() ?? "",
+  });
+  const headingIssues = headingWarnings(editor?.getJSON() ?? emptyDoc);
+  const imageMedia = media.filter((item) => item.mimeType.startsWith("image/"));
+  const previewSlug = slug || slugify(title) || "slug";
+
+  const toggleCategory = (id: string) => {
+    setCategoryIds((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      if (!next.includes(primaryCategoryId)) setPrimaryCategoryId("");
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const toggleTag = (id: string) => {
+    setTagIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setDirty(true);
+  };
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <section className="min-w-0 overflow-hidden rounded-[var(--radius-xl)] border border-border bg-card shadow-sm">
-        <div className="border-b border-border p-4 sm:p-5">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 space-y-5">
+        <section className="rounded-2xl border border-border bg-card p-5">
           <input
             value={title}
-            onChange={(event) => { setTitle(event.target.value); setDirty(true); }}
+            onChange={(event) => {
+              const next = event.target.value;
+              setTitle(next);
+              if (!initial?.slug && !slug) setSlug(slugify(next));
+              setDirty(true);
+            }}
+            className="w-full bg-transparent text-3xl font-black outline-none"
             placeholder="عنوان المحتوى"
-            className="w-full bg-transparent text-2xl font-black tracking-tight outline-none placeholder:text-muted-foreground/50 sm:text-3xl"
             aria-label="عنوان المحتوى"
           />
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="flex min-w-0 items-center rounded-xl border border-border bg-background px-3 text-xs text-muted-foreground">
-              <span className="shrink-0">الرابط:</span>
-              <input value={slug} onChange={(event) => { setSlug(event.target.value); setDirty(true); }} className="min-w-0 flex-1 bg-transparent px-2 py-2 text-foreground outline-none" dir="ltr" placeholder="يُولد تلقائيًا" />
-            </label>
-            <div className="flex items-center gap-2 text-xs font-bold">
-              <span className={saveState === "error" ? "text-destructive" : "text-muted-foreground"} role="status">{saveMessage || (dirty ? "تغييرات غير محفوظة" : "جاهز")}</span>
-              <button type="button" onClick={() => void persist("manual")} className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3 text-primary-foreground disabled:opacity-50" disabled={saveState === "saving"}>
-                <Save className="size-4" aria-hidden="true" /> حفظ
-              </button>
-              {previewHref ? <a href={previewHref} target="_blank" className="inline-flex h-9 items-center rounded-xl border border-border px-3 hover:bg-accent">معاينة</a> : null}
+          <textarea
+            value={excerpt}
+            onChange={(event) => { setExcerpt(event.target.value); setDirty(true); }}
+            className="admin-input mt-4 min-h-24"
+            placeholder="وصف مختصر — يمكن تركه ليُولد من النص"
+          />
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-border bg-card">
+          <EditorToolbar editor={editor} media={imageMedia} />
+          <div className="p-6"><EditorContent editor={editor} /></div>
+        </section>
+
+        <Panel title="الخلاصة وGEO">
+          <textarea
+            value={summary}
+            onChange={(event) => { setSummary(event.target.value); setDirty(true); }}
+            className="admin-input min-h-24"
+            placeholder="خلاصة اختيارية تظهر أعلى المقال"
+          />
+          <label className="grid gap-2 text-xs font-bold">
+            أهم النقاط — نقطة في كل سطر
+            <textarea
+              value={keyPoints}
+              onChange={(event) => { setKeyPoints(event.target.value); setDirty(true); }}
+              className="admin-input min-h-28"
+            />
+          </label>
+        </Panel>
+
+        <Panel title="المراجع والمصادر">
+          <button
+            type="button"
+            onClick={() => { setReferences((current) => [...current, { title: "", url: null, sortOrder: current.length }]); setDirty(true); }}
+            className={buttonSecondary}
+          >
+            <Plus className="size-4" /> إضافة مرجع
+          </button>
+          {references.map((reference, index) => (
+            <div key={reference.id ?? index} className="grid gap-2 rounded-xl border border-border p-3">
+              <div className="flex gap-2">
+                <input
+                  value={reference.title}
+                  onChange={(event) => {
+                    setReferences((current) => current.map((item, i) => i === index ? { ...item, title: event.target.value } : item));
+                    setDirty(true);
+                  }}
+                  className="admin-input flex-1"
+                  placeholder="عنوان المرجع"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setReferences((current) => current.filter((_, i) => i !== index)); setDirty(true); }}
+                  className="grid size-10 place-items-center rounded-xl border border-border"
+                  aria-label="حذف المرجع"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+              <input
+                value={reference.url ?? ""}
+                onChange={(event) => {
+                  setReferences((current) => current.map((item, i) => i === index ? { ...item, url: event.target.value } : item));
+                  setDirty(true);
+                }}
+                className="admin-input"
+                placeholder="https://…"
+                dir="ltr"
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input value={reference.author ?? ""} onChange={(event) => { setReferences((current) => current.map((item, i) => i === index ? { ...item, author: event.target.value } : item)); setDirty(true); }} className="admin-input" placeholder="المؤلف" />
+                <input value={reference.publisher ?? ""} onChange={(event) => { setReferences((current) => current.map((item, i) => i === index ? { ...item, publisher: event.target.value } : item)); setDirty(true); }} className="admin-input" placeholder="الناشر" />
+              </div>
             </div>
-          </div>
-        </div>
+          ))}
+        </Panel>
 
-        <EditorToolbar editor={editor} />
-        <div className="relative px-5 py-6 sm:px-8 sm:py-8">
-          <EditorContent editor={editor} />
-          {slashOpen && editor ? <SlashMenu editor={editor} close={() => setSlashOpen(false)} /> : null}
-        </div>
-      </section>
+        <Panel title="الأسئلة الشائعة">
+          <button
+            type="button"
+            onClick={() => { setFaqs((current) => [...current, { question: "", answer: "", sortOrder: current.length }]); setDirty(true); }}
+            className={buttonSecondary}
+          >
+            <Plus className="size-4" /> إضافة سؤال
+          </button>
+          {faqs.map((faq, index) => (
+            <div key={faq.id ?? index} className="grid gap-2 rounded-xl border border-border p-3">
+              <div className="flex gap-2">
+                <input value={faq.question} onChange={(event) => { setFaqs((current) => current.map((item, i) => i === index ? { ...item, question: event.target.value } : item)); setDirty(true); }} className="admin-input flex-1" placeholder="السؤال" />
+                <button type="button" onClick={() => { setFaqs((current) => current.filter((_, i) => i !== index)); setDirty(true); }} className="grid size-10 place-items-center rounded-xl border border-border" aria-label="حذف السؤال"><Trash2 className="size-4" /></button>
+              </div>
+              <textarea value={faq.answer} onChange={(event) => { setFaqs((current) => current.map((item, i) => i === index ? { ...item, answer: event.target.value } : item)); setDirty(true); }} className="admin-input min-h-24" placeholder="الإجابة" />
+            </div>
+          ))}
+        </Panel>
+      </div>
 
-      <aside className="grid content-start gap-4">
+      <aside className="space-y-4">
         <Panel title="النشر">
-          <Field label="النوع">
-            <select value={type} onChange={(event) => { setType(event.target.value as SavePostPayload["type"]); setDirty(true); }} className="admin-input">
-              <option value="article">مقال</option><option value="note">تدوينة</option><option value="diary">يومية</option><option value="story">قصة</option><option value="link">رابط</option><option value="page">صفحة</option>
-            </select>
-          </Field>
-          <Field label="الحالة">
-            <select value={status} onChange={(event) => { setStatus(event.target.value as SavePostPayload["status"]); setDirty(true); }} className="admin-input">
-              <option value="draft">مسودة</option><option value="review">للمراجعة</option>
-              {canPublish ? <><option value="published">منشور</option><option value="scheduled">مجدول</option></> : null}
-              <option value="archived">مؤرشف</option>
-            </select>
-          </Field>
-          {status === "scheduled" ? <Field label="موعد النشر"><input type="datetime-local" value={scheduledAt} onChange={(event) => { setScheduledAt(event.target.value); setDirty(true); }} className="admin-input" /></Field> : null}
-          <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={featured} onChange={(event) => { setFeatured(event.target.checked); setDirty(true); }} /> محتوى مميز</label>
-          {type === "link" ? <Field label="الرابط الخارجي"><input type="url" dir="ltr" value={externalUrl} onChange={(event) => { setExternalUrl(event.target.value); setDirty(true); }} className="admin-input" /></Field> : null}
-          {canPublish ? <button type="button" onClick={() => { setStatus("published"); setDirty(true); window.setTimeout(() => void persist("publish"), 0); }} className="h-10 rounded-xl bg-primary text-sm font-black text-primary-foreground">نشر الآن</button> : null}
-        </Panel>
-
-        <Panel title="الملخص">
-          <textarea value={excerpt} onChange={(event) => { setExcerpt(event.target.value); setDirty(true); }} rows={5} maxLength={1000} className="admin-input min-h-28 resize-y py-3" placeholder="ملخص قصير يظهر في بطاقات المقال." />
-        </Panel>
-
-        <Panel title="صورة الغلاف">
-          <select value={coverImageId} onChange={(event) => { setCoverImageId(event.target.value); setDirty(true); }} className="admin-input">
-            <option value="">بدون صورة</option>
-            {media.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-          {coverImageId ? (() => { const selected = media.find((item) => item.id === coverImageId); return selected ? <img src={selected.url} alt={selected.alt} className="aspect-video w-full rounded-xl object-cover" /> : null; })() : null}
-          <a href="/admin/media" target="_blank" className="text-xs font-bold text-primary">فتح مكتبة الوسائط</a>
-        </Panel>
-
-        <Panel title="الأقسام">
-          <div className="grid max-h-52 gap-2 overflow-y-auto">
-            {categories.map((category) => <label key={category.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={categoryIds.includes(category.id)} onChange={(event) => { setCategoryIds((current) => event.target.checked ? [...new Set([...current, category.id])] : current.filter((id) => id !== category.id)); if (!event.target.checked && primaryCategoryId === category.id) setPrimaryCategoryId(""); setDirty(true); }} />{category.name}</label>)}
+          <div className="flex items-center justify-between text-xs"><span>الحالة</span><strong>{status}</strong></div>
+          <button type="button" disabled={saving} onClick={() => void persist("manual")} className={buttonSecondary}><Save className="size-4" /> حفظ</button>
+          {postId ? <button type="button" onClick={() => window.open(`/api/preview?id=${encodeURIComponent(postId)}`, "_blank", "noopener,noreferrer")} className={buttonSecondary}><Eye className="size-4" /> معاينة</button> : null}
+          {canPublish && status !== "published" ? <button type="button" onClick={() => setPublishOpen(true)} className={buttonPrimary}><Send className="size-4" /> نشر الآن</button> : null}
+          {canPublish && status === "published" ? <button type="button" onClick={() => void persist("publish", "published")} className={buttonPrimary}><Send className="size-4" /> تحديث المنشور</button> : null}
+          {canPublish && status === "published" ? <button type="button" onClick={() => void persist("manual", "draft")} className={buttonSecondary}>إلغاء النشر</button> : null}
+          <div className="rounded-xl border border-border p-3">
+            <label className="grid gap-2 text-xs font-bold">
+              موعد النشر — {timezone}
+              <input type="datetime-local" value={scheduleLocal} onChange={(event) => setScheduleLocal(event.target.value)} className="admin-input" />
+            </label>
+            {canPublish ? <button type="button" disabled={!scheduleLocal} onClick={() => void persist("manual", "scheduled")} className={`${buttonSecondary} mt-2 w-full`}><CalendarClock className="size-4" /> جدولة</button> : null}
           </div>
-          <Field label="القسم الرئيسي"><select value={primaryCategoryId} onChange={(event) => { setPrimaryCategoryId(event.target.value); setDirty(true); }} className="admin-input"><option value="">تلقائي</option>{categories.filter((category) => categoryIds.includes(category.id)).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></Field>
+          <p className="min-h-5 text-xs leading-6 text-muted-foreground" role="status">{saving ? "جارٍ الحفظ…" : message}</p>
         </Panel>
 
-        <Panel title="الوسوم">
-          <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto">
-            {tags.map((tag) => <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold ${tagIds.includes(tag.id) ? "border-primary bg-primary/10 text-primary" : "border-border"}`}><input type="checkbox" className="sr-only" checked={tagIds.includes(tag.id)} onChange={(event) => { setTagIds((current) => event.target.checked ? [...new Set([...current, tag.id])] : current.filter((id) => id !== tag.id)); setDirty(true); }} />{tag.name}</label>)}
-          </div>
+        <Panel title="بيانات المحتوى">
+          <Field label="Slug"><input value={slug} onChange={(event) => { setSlug(slugify(event.target.value)); setDirty(true); }} className="admin-input" dir="ltr" /></Field>
+          <Field label="النوع"><select value={type} onChange={(event) => { setType(event.target.value as ContentType); setDirty(true); }} className="admin-input"><option value="article">مقال</option><option value="note">تدوينة</option><option value="diary">يومية</option><option value="story">قصة</option><option value="link">رابط</option><option value="page">صفحة</option></select></Field>
+          {type === "link" ? <Field label="الرابط الخارجي"><input value={externalUrl} onChange={(event) => { setExternalUrl(event.target.value); setDirty(true); }} className="admin-input" dir="ltr" /></Field> : null}
+          <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={featured} onChange={(event) => { setFeatured(event.target.checked); setDirty(true); }} /> محتوى مميز</label>
+        </Panel>
+
+        <Panel title="الأقسام والوسوم">
+          <div className="flex flex-wrap gap-2">{categories.map((category) => <label key={category.id} className="rounded-full border border-border px-2 py-1 text-xs"><input type="checkbox" className="ml-1" checked={categoryIds.includes(category.id)} onChange={() => toggleCategory(category.id)} />{category.name}</label>)}</div>
+          {categoryIds.length ? <Field label="القسم الرئيسي"><select value={primaryCategoryId} onChange={(event) => { setPrimaryCategoryId(event.target.value); setDirty(true); }} className="admin-input"><option value="">تلقائي</option>{selectedCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></Field> : null}
+          <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto">{tags.map((tag) => <label key={tag.id} className="rounded-full border border-border px-2 py-1 text-xs"><input type="checkbox" className="ml-1" checked={tagIds.includes(tag.id)} onChange={() => toggleTag(tag.id)} />{tag.name}</label>)}</div>
+          {isMedical ? <p className="rounded-xl bg-amber-50 p-3 text-xs leading-6 text-amber-900">للمحتوى الطبي والصيدلاني: أضف المصادر المناسبة ولا تفعّل المراجعة الطبية إلا إذا تمت فعليًا.</p> : null}
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={medicalReviewed} onChange={(event) => { setMedicalReviewed(event.target.checked); setDirty(true); }} /> تمت مراجعة طبية فعلية وموثقة</label>
+        </Panel>
+
+        <Panel title="الصور">
+          <Field label="الغلاف"><select value={coverImageId} onChange={(event) => { setCoverImageId(event.target.value); setDirty(true); }} className="admin-input"><option value="">بدون صورة</option>{imageMedia.map((item) => <option key={item.id} value={item.id}>{item.fileName}{item.altText ? "" : " — بلا Alt"}</option>)}</select></Field>
+          {coverImageId && !cover?.altText ? <p className="text-xs text-amber-700">تحذير: صورة الغلاف بلا Alt.</p> : null}
+        </Panel>
+
+        <Panel title="SEO وOpen Graph">
+          <Field label={`SEO Title (${seoTitle.length})`}><input value={seoTitle} onChange={(event) => { setSeoTitle(event.target.value); setDirty(true); }} className="admin-input" placeholder={title} /></Field>
+          <Field label={`Meta Description (${seoDescription.length})`}><textarea value={seoDescription} onChange={(event) => { setSeoDescription(event.target.value); setDirty(true); }} className="admin-input min-h-20" placeholder={excerpt} /></Field>
+          <Field label="Canonical"><input value={canonicalUrl} onChange={(event) => { setCanonicalUrl(event.target.value); setDirty(true); }} className="admin-input" dir="ltr" placeholder={`/posts/${previewSlug}`} /></Field>
+          <div className="flex gap-4 text-xs"><label><input type="checkbox" checked={robotsIndex} onChange={(event) => { setRobotsIndex(event.target.checked); setDirty(true); }} /> Index</label><label><input type="checkbox" checked={robotsFollow} onChange={(event) => { setRobotsFollow(event.target.checked); setDirty(true); }} /> Follow</label></div>
+          <Field label="Focus keyword"><input value={focusKeyword} onChange={(event) => { setFocusKeyword(event.target.value); setDirty(true); }} className="admin-input" /></Field>
+          <div className="rounded-xl border border-border bg-background p-3"><p className="text-sm font-bold text-blue-700">{seoTitle || title || "عنوان الصفحة"}</p><p className="mt-1 truncate text-xs text-emerald-700">{canonicalUrl || `/posts/${previewSlug}`}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{seoDescription || excerpt || "وصف الصفحة"}</p></div>
+          <Field label="OG Title"><input value={ogTitle} onChange={(event) => { setOgTitle(event.target.value); setDirty(true); }} className="admin-input" /></Field>
+          <Field label="OG Description"><textarea value={ogDescription} onChange={(event) => { setOgDescription(event.target.value); setDirty(true); }} className="admin-input min-h-20" /></Field>
+          <Field label="OG Image"><select value={ogImageId} onChange={(event) => { setOgImageId(event.target.value); setDirty(true); }} className="admin-input"><option value="">تلقائية</option>{imageMedia.map((item) => <option key={item.id} value={item.id}>{item.fileName}</option>)}</select></Field>
+          <Field label="X Title"><input value={twitterTitle} onChange={(event) => { setTwitterTitle(event.target.value); setDirty(true); }} className="admin-input" /></Field>
+          <Field label="X Description"><textarea value={twitterDescription} onChange={(event) => { setTwitterDescription(event.target.value); setDirty(true); }} className="admin-input min-h-20" /></Field>
+          <Field label="X Image"><select value={twitterImageId} onChange={(event) => { setTwitterImageId(event.target.value); setDirty(true); }} className="admin-input"><option value="">استخدم OG</option>{imageMedia.map((item) => <option key={item.id} value={item.id}>{item.fileName}</option>)}</select></Field>
+        </Panel>
+
+        <Panel title="جودة المحتوى">
+          <p className="text-xs text-muted-foreground">{countWords(contentText)} كلمة · {readingMinutes(contentText)} دقيقة تقريبًا</p>
+          <ul className="grid gap-1.5 text-xs">{quality.map((item) => <li key={item.label} className={item.ok ? "text-emerald-700" : "text-amber-700"}>{item.ok ? "✓" : "!"} {item.label}</li>)}</ul>
+          {headingIssues.map((warning) => <p key={warning} className="text-xs text-amber-700">! {warning}</p>)}
         </Panel>
       </aside>
+
+      <Dialog.Root open={publishOpen} onOpenChange={setPublishOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
+          <Dialog.Content dir="rtl" className="fixed left-1/2 top-1/2 z-50 w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-xl">
+            <div className="flex items-center justify-between"><Dialog.Title className="text-lg font-black">تأكيد النشر</Dialog.Title><Dialog.Close className="grid size-9 place-items-center rounded-xl border border-border"><X className="size-4" /></Dialog.Close></div>
+            <ul className="mt-4 grid gap-2 text-sm">{quality.slice(0, 7).map((item) => <li key={item.label}>{item.ok ? "✓" : "!"} {item.label}</li>)}</ul>
+            <p className="mt-3 text-xs leading-6 text-muted-foreground">التحذيرات إرشادية. أخطاء البيانات الفعلية فقط تمنع النشر.</p>
+            <div className="mt-5 flex gap-2"><button type="button" disabled={saving} onClick={async () => { if (await persist("publish", "published")) setPublishOpen(false); }} className={buttonPrimary}>نشر الآن</button><Dialog.Close className={buttonSecondary}>إلغاء</Dialog.Close></div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
 
-function EditorToolbar({ editor }: { editor: Editor | null }) {
-  const [, forceUpdate] = useState(0);
-  useEffect(() => {
-    if (!editor) return;
-    const rerender = () => forceUpdate((value) => value + 1);
-    editor.on("selectionUpdate", rerender);
-    editor.on("transaction", rerender);
-    return () => { editor.off("selectionUpdate", rerender); editor.off("transaction", rerender); };
-  }, [editor]);
-
+function EditorToolbar({ editor, media }: { editor: Editor | null; media: MediaItem[] }) {
   if (!editor) return <div className="h-14 border-b border-border bg-muted/20" />;
+  const tool = "grid size-9 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground";
 
-  const promptLink = () => {
-    const href = window.prompt("أدخل الرابط (https:// أو mailto:)", editor.getAttributes("link").href ?? "https://");
-    if (!href) return;
-    if (!/^(https?:\/\/|mailto:)/i.test(href)) return;
+  const addLink = () => {
+    const href = window.prompt("أدخل الرابط (https:// أو mailto:)", "https://");
+    if (!href || !/^(https?:\/\/|mailto:)/i.test(href)) return;
     editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
   };
-  const promptImage = () => {
-    const src = window.prompt("رابط الصورة من مكتبة الوسائط", "https://");
-    if (!src || !/^https:\/\//i.test(src)) return;
-    editor.chain().focus().setImage({ src, alt: "" }).run();
-  };
 
-  const tools = [
-    [Pilcrow, "فقرة", () => editor.chain().focus().setParagraph().run(), editor.isActive("paragraph")],
-    [Heading1, "عنوان 1", () => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 })],
-    [Heading2, "عنوان 2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 })],
-    [Heading3, "عنوان 3", () => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 })],
-    [Bold, "عريض", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold")],
-    [Italic, "مائل", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic")],
-    [Underline, "تحته خط", () => editor.chain().focus().toggleUnderline().run(), editor.isActive("underline")],
-    [Strikethrough, "مشطوب", () => editor.chain().focus().toggleStrike().run(), editor.isActive("strike")],
-    [Highlighter, "تمييز", () => editor.chain().focus().toggleHighlight().run(), editor.isActive("highlight")],
-    [List, "قائمة", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList")],
-    [ListOrdered, "قائمة مرقمة", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList")],
-    [ListChecks, "قائمة مهام", () => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList")],
-    [Quote, "اقتباس", () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote")],
-    [Code2, "كود", () => editor.chain().focus().toggleCode().run(), editor.isActive("code")],
-    [Braces, "كتلة كود", () => editor.chain().focus().toggleCodeBlock().run(), editor.isActive("codeBlock")],
-  ] as const;
+  const addImage = () => {
+    if (!media.length) return;
+    const choices = media.slice(0, 20).map((item, index) => `${index + 1}. ${item.fileName}`).join("\n");
+    const selected = Number(window.prompt(`اختر رقم الصورة:\n${choices}`, "1"));
+    const item = media[selected - 1];
+    if (!item) return;
+    editor.chain().focus().setImage({ src: item.url, alt: item.altText || item.fileName }).run();
+  };
 
   return (
     <div className="sticky top-16 z-10 flex flex-wrap gap-1 border-b border-border bg-card/95 p-2 backdrop-blur">
-      {tools.map(([Icon, label, action, active]) => <ToolbarButton key={label} label={label} active={active} onClick={action}><Icon className="size-4" /></ToolbarButton>)}
-      <ToolbarButton label="رابط" active={editor.isActive("link")} onClick={promptLink}><Link2 className="size-4" /></ToolbarButton>
-      <ToolbarButton label="صورة" onClick={promptImage}><ImageIcon className="size-4" /></ToolbarButton>
-      <ToolbarButton label="جدول" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Table2 className="size-4" /></ToolbarButton>
-      <ToolbarButton label="فاصل" onClick={() => editor.chain().focus().setHorizontalRule().run()}><Minus className="size-4" /></ToolbarButton>
-      <ToolbarButton label="مربع معلومات" onClick={() => editor.chain().focus().insertContent({ type: "callout", attrs: { kind: "info" }, content: [{ type: "paragraph" }] }).run()}><Info className="size-4" /></ToolbarButton>
-      <ToolbarButton label="تنبيه" onClick={() => editor.chain().focus().insertContent({ type: "callout", attrs: { kind: "warning" }, content: [{ type: "paragraph" }] }).run()}><AlertTriangle className="size-4" /></ToolbarButton>
+      <Tool className={tool} label="H2" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="size-4" /></Tool>
+      <Tool className={tool} label="H3" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 className="size-4" /></Tool>
+      <Tool className={tool} label="H4" onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}><span className="text-xs font-black">H4</span></Tool>
+      <Tool className={tool} label="عريض" onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="size-4" /></Tool>
+      <Tool className={tool} label="مائل" onClick={() => editor.chain().focus().toggleItalic().run()}><Italic className="size-4" /></Tool>
+      <Tool className={tool} label="قائمة" onClick={() => editor.chain().focus().toggleBulletList().run()}><List className="size-4" /></Tool>
+      <Tool className={tool} label="قائمة مرقمة" onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="size-4" /></Tool>
+      <Tool className={tool} label="اقتباس" onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote className="size-4" /></Tool>
+      <Tool className={tool} label="كود" onClick={() => editor.chain().focus().toggleCodeBlock().run()}><Code2 className="size-4" /></Tool>
+      <Tool className={tool} label="رابط" onClick={addLink}><Link2 className="size-4" /></Tool>
+      <Tool className={tool} label="صورة" onClick={addImage}><ImageIcon className="size-4" /></Tool>
+      <Tool className={tool} label="جدول" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><Table2 className="size-4" /></Tool>
     </div>
   );
 }
 
-function SlashMenu({ editor, close }: { editor: Editor; close: () => void }) {
-  const commands = useMemo(() => [
-    ["عنوان", Heading2, () => editor.chain().focus().deleteRange({ from: Math.max(1, editor.state.selection.from - 1), to: editor.state.selection.from }).toggleHeading({ level: 2 }).run()],
-    ["صورة", ImageIcon, () => { const src = window.prompt("رابط الصورة", "https://"); if (src && /^https:\/\//i.test(src)) editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).setImage({ src }).run(); }],
-    ["اقتباس", Quote, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).toggleBlockquote().run()],
-    ["جدول", Table2, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()],
-    ["مربع معلومات", Info, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).insertContent({ type: "callout", attrs: { kind: "info" }, content: [{ type: "paragraph" }] }).run()],
-    ["تنبيه طبي", AlertTriangle, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).insertContent({ type: "callout", attrs: { kind: "medical" }, content: [{ type: "paragraph" }] }).run()],
-    ["كود", Braces, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).toggleCodeBlock().run()],
-    ["مرجع", FileText, () => editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).insertContent({ type: "callout", attrs: { kind: "reference" }, content: [{ type: "paragraph" }] }).run()],
-  ] as const, [editor]);
-
-  return <div className="absolute right-8 top-8 z-20 w-56 overflow-hidden rounded-2xl border border-border bg-popover p-1 shadow-xl">{commands.map(([label, Icon, command]) => <button key={label} type="button" onClick={() => { command(); close(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-right text-sm font-bold hover:bg-accent"><Icon className="size-4 text-primary" />{label}</button>)}</div>;
+function Tool({ className, label, onClick, children }: { className: string; label: string; onClick: () => void; children: ReactNode }) {
+  return <button type="button" className={className} title={label} aria-label={label} onClick={onClick}>{children}</button>;
 }
 
-function ToolbarButton({ label, active = false, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" aria-label={label} title={label} aria-pressed={active} onClick={onClick} className={`grid size-9 place-items-center rounded-lg transition ${active ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}>{children}</button>;
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="grid gap-3 rounded-2xl border border-border bg-card p-4"><h2 className="text-sm font-black">{title}</h2>{children}</section>;
 }
-function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="grid gap-4 rounded-[var(--radius-lg)] border border-border bg-card p-4"><h2 className="text-sm font-black">{title}</h2>{children}</section>; }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="grid gap-2 text-xs font-bold text-muted-foreground"><span>{label}</span>{children}</label>; }
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <label className="grid gap-2 text-xs font-bold text-muted-foreground"><span>{label}</span>{children}</label>;
+}
