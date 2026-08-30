@@ -252,7 +252,7 @@ export function ContentEditor({
       medicalReviewed,
       references,
       faqs,
-      initial?.id,
+      initial,
       router,
     ],
   );
